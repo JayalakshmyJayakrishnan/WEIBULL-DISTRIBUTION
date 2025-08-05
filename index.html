@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Weibull Distribution Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .slider-thumb::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .slider-thumb::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex items-center justify-center min-h-screen py-8">
+
+
+    <div class="w-full max-w-4xl mx-auto p-6 md:p-8 bg-gray-800 rounded-2xl shadow-2xl border border-gray-700">
+       
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">Weibull Distribution Explorer</h1>
+            <p class="text-gray-400 mt-2">Adjust Shape (k) and Scale (λ) to see their effect on the PDF and CDF.</p>
+        </div>
+
+
+        <!-- Special Case Notification Area -->
+        <div id="notification-area" class="text-center mb-4 h-6 text-green-400 font-semibold transition-opacity duration-300"></div>
+
+
+        <!-- Chart Area -->
+        <div class="bg-gray-900/50 rounded-lg p-4 border border-gray-700 relative">
+            <svg id="weibull-chart" class="w-full" height="400"></svg>
+        </div>
+
+
+        <!-- Controls -->
+        <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Shape (k) Slider -->
+            <div class="p-4 bg-gray-700/50 rounded-lg">
+                <div class="flex justify-between items-center mb-2">
+                    <label for="shape-slider" class="font-medium text-lg">Shape (k)</label>
+                    <span id="shape-value" class="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-semibold">1.0</span>
+                </div>
+                <input id="shape-slider" type="range" min="0.5" max="10" value="1" step="0.1" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider-thumb">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                    <span>0.5</span>
+                    <span>10</span>
+                </div>
+            </div>
+
+
+            <!-- Scale (λ) Slider -->
+            <div class="p-4 bg-gray-700/50 rounded-lg">
+                <div class="flex justify-between items-center mb-2">
+                    <label for="scale-slider" class="font-medium text-lg">Scale (λ)</label>
+                    <span id="scale-value" class="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-semibold">1.0</span>
+                </div>
+                <input id="scale-slider" type="range" min="0.5" max="5" value="1" step="0.1" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider-thumb">
+                 <div class="flex justify-between text-xs text-gray-400 mt-1">
+                    <span>0.5</span>
+                    <span>5</span>
+                </div>
+            </div>
+        </div>
+       
+        <!-- Statistical Properties -->
+        <div class="mt-8 p-4 bg-gray-700/50 rounded-lg">
+            <h3 class="text-lg font-semibold text-center mb-4 text-white">Statistical Properties</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div>
+                    <p class="text-sm text-gray-400">Mean</p>
+                    <p id="stat-mean" class="text-xl font-bold text-blue-400">0.00</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Median</p>
+                    <p id="stat-median" class="text-xl font-bold text-blue-400">0.00</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Variance</p>
+                    <p id="stat-variance" class="text-xl font-bold text-blue-400">0.00</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Mode</p>
+                    <p id="stat-mode" class="text-xl font-bold text-blue-400">0.00</p>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+
+    <script>
+        // --- D3.js Chart Logic ---
+
+
+        // 1. Setup
+        const svg = d3.select("#weibull-chart");
+        const margin = { top: 40, right: 30, bottom: 50, left: 50 };
+        let width = parseInt(svg.style("width")) - margin.left - margin.right;
+        let height = parseInt(svg.style("height")) - margin.top - margin.bottom;
+
+
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+
+        // 2. Scales
+        const xScale = d3.scaleLinear().range([0, width]);
+        const yScale = d3.scaleLinear().range([height, 0]);
+       
+        // 3. Axes
+        const xAxisGroup = g.append("g").attr("transform", `translate(0, ${height})`).attr("class", "axis");
+        const yAxisGroup = g.append("g").attr("class", "axis");
+           
+        // Axis labels
+        g.append("text").attr("class", "axis-label").attr("x", width / 2).attr("y", height + margin.bottom - 10).attr("text-anchor", "middle").style("fill", "#9ca3af").text("x");
+        g.append("text").attr("class", "axis-label").attr("transform", "rotate(-90)").attr("x", -height / 2).attr("y", -margin.left + 15).attr("text-anchor", "middle").style("fill", "#9ca3af").text("Value");
+
+
+        // 4. Line Generators
+        const pdfLine = d3.line().x(d => xScale(d.x)).y(d => yScale(d.pdf)).curve(d3.curveBasis);
+        const cdfLine = d3.line().x(d => xScale(d.x)).y(d => yScale(d.cdf)).curve(d3.curveBasis);
+
+
+        const pdfPath = g.append("path").attr("fill", "none").attr("stroke", "#3b82f6").attr("stroke-width", 3).attr("stroke-linejoin", "round").attr("stroke-linecap", "round");
+        const cdfPath = g.append("path").attr("fill", "none").attr("stroke", "#10b981").attr("stroke-width", 3).attr("stroke-linejoin", "round").attr("stroke-linecap", "round").attr("stroke-dasharray", "5,5");
+
+
+        // Legend
+        const legend = g.append("g").attr("class", "legend").attr("transform", `translate(${width - 100}, -20)`);
+        legend.append("rect").attr("x", 0).attr("width", 15).attr("height", 3).attr("fill", "#3b82f6");
+        legend.append("text").attr("x", 20).attr("y", 5).text("PDF").style("fill", "#d1d5db").style("font-size", "12px");
+        legend.append("rect").attr("x", 0).attr("y", 20).attr("width", 15).attr("height", 3).attr("fill", "#10b981");
+        legend.append("text").attr("x", 20).attr("y", 25).text("CDF").style("fill", "#d1d5db").style("font-size", "12px");
+
+
+        // 5. Mathematical Functions
+        // Lanczos approximation for the Gamma function
+        function gamma(z) {
+            const p = [676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+            if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+            z -= 1;
+            let x = 0.99999999999980993;
+            for (let i = 0; i < p.length; i++) {
+                x += p[i] / (z + i + 1);
+            }
+            const t = z + p.length - 0.5;
+            return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+        }
+
+
+        function weibullPDF(x, k, lambda) {
+            if (x < 0) return 0;
+            return (k / lambda) * Math.pow(x / lambda, k - 1) * Math.exp(-Math.pow(x / lambda, k));
+        }
+       
+        function weibullCDF(x, k, lambda) {
+            if (x < 0) return 0;
+            return 1 - Math.exp(-Math.pow(x/lambda, k));
+        }
+
+
+        // 6. Data Generation
+        function generateData(k, lambda) {
+            const data = [];
+            const xMax = lambda * 4 > 5 ? lambda * 4 : 5;
+            for (let i = 0; i <= 200; i++) {
+                const x = (i / 200) * xMax;
+                const pdf = weibullPDF(x, k, lambda);
+                const cdf = weibullCDF(x, k, lambda);
+                if (isFinite(pdf) && isFinite(cdf)) {
+                    data.push({ x, pdf, cdf });
+                }
+            }
+            return data;
+        }
+       
+        // 7. Update Function
+        function update() {
+            // Get current slider values
+            const k = +d3.select("#shape-slider").node().value;
+            const lambda = +d3.select("#scale-slider").node().value;
+
+
+            // Update value displays
+            d3.select("#shape-value").text(k.toFixed(1));
+            d3.select("#scale-value").text(lambda.toFixed(1));
+
+
+            // Generate new data
+            const data = generateData(k, lambda);
+
+
+            // Update domains
+            const xMax = d3.max(data, d => d.x) || 5;
+            const yMaxPDF = d3.max(data, d => d.pdf) || 1;
+            xScale.domain([0, xMax]);
+            yScale.domain([0, Math.max(yMaxPDF, 1) * 1.1]); // Accommodate both PDF and CDF
+
+
+            // Update axes
+            const xAxis = d3.axisBottom(xScale).ticks(width > 500 ? 10 : 5);
+            const yAxis = d3.axisLeft(yScale).ticks(5).tickFormat(d3.format(".2f"));
+           
+            xAxisGroup.transition().duration(300).call(xAxis);
+            yAxisGroup.transition().duration(300).call(yAxis);
+           
+            g.selectAll(".axis path, .axis line").attr("stroke", "#4b5563");
+            g.selectAll(".axis text").style("fill", "#9ca3af");
+
+
+            // Update line paths
+            pdfPath.datum(data).transition().duration(300).attr("d", pdfLine);
+            cdfPath.datum(data).transition().duration(300).attr("d", cdfLine);
+
+
+            // Update statistical properties
+            const mean = lambda * gamma(1 + 1 / k);
+            const median = lambda * Math.pow(Math.log(2), 1 / k);
+            const variance = Math.pow(lambda, 2) * (gamma(1 + 2 / k) - Math.pow(gamma(1 + 1 / k), 2));
+            const mode = k > 1 ? lambda * Math.pow((k - 1) / k, 1 / k) : 0;
+
+
+            d3.select("#stat-mean").text(mean.toFixed(2));
+            d3.select("#stat-median").text(median.toFixed(2));
+            d3.select("#stat-variance").text(variance.toFixed(2));
+            d3.select("#stat-mode").text(mode.toFixed(2));
+           
+            // Handle special case notifications
+            const notification = d3.select("#notification-area");
+            if (k.toFixed(1) == 1.0) {
+                notification.text("Special Case: Exponential Distribution");
+            } else if (k.toFixed(1) == 2.0) {
+                notification.text("Special Case: Rayleigh Distribution");
+            } else if (k >= 3.5 && k <= 3.7) {
+                notification.text("Approximates the Normal Distribution");
+            } else {
+                notification.text("");
+            }
+        }
+       
+        // 8. Event Listeners
+        d3.select("#shape-slider").on("input", update);
+        d3.select("#scale-slider").on("input", update);
+
+
+        // Responsive chart
+        function resize() {
+            width = parseInt(svg.style("width")) - margin.left - margin.right;
+            xScale.range([0, width]);
+           
+            g.select(".axis-label[x]").attr("x", width / 2);
+            legend.attr("transform", `translate(${width - 100}, -20)`);
+
+
+            update();
+        }
+
+
+        window.addEventListener('resize', resize);
+
+
+        // Initial draw
+        update();
+
+
+    </script>
+</body>
+</html>
+
+
